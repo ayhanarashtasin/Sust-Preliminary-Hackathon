@@ -1,0 +1,17 @@
+﻿{
+    "ticket_id":  "TKT-010",
+    "relevant_transaction_id":  "TXN-10002",
+    "evidence_verdict":  "consistent",
+    "case_type":  "duplicate_payment",
+    "severity":  "high",
+    "department":  "payments_ops",
+    "agent_summary":  "The complaint could not be fully analyzed from the available information. Manual review is required.",
+    "recommended_next_action":  "Escalate to a support agent for manual review and verify the available transaction details.",
+    "customer_reply":  "We have received your concern. Our support team will review the details and contact you through official channels. Please do not share your PIN, OTP, or password with anyone.",
+    "human_review_required":  true,
+    "confidence":  0.3,
+    "reason_codes":  [
+                         "fallback_response",
+                         "manual_review_required"
+                     ]
+}

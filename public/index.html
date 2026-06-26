@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QueueStorm Investigator — Ticket Analyzer</title>
+  <meta name="description" content="AI-powered support ticket investigator for digital finance platforms." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-brand">
+        <div class="logo-icon">Q</div>
+        <div>
+          <h1>QueueStorm Investigator</h1>
+          <p class="subtitle">AI-Powered Ticket Analysis Copilot</p>
+        </div>
+      </div>
+      <div class="health-badge" id="health-badge">
+        <span class="health-dot"></span>
+        Checking...
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Input Panel -->
+      <section class="panel input-panel">
+        <div class="panel-header">
+          <h2>📩 Request Payload</h2>
+          <div class="panel-actions">
+            <select id="sample-select">
+              <option value="">Load a sample case...</option>
+            </select>
+            <button class="btn btn-secondary" id="btn-clear">Clear</button>
+          </div>
+        </div>
+        <textarea
+          id="request-input"
+          spellcheck="false"
+          placeholder='Paste your JSON request here, or select a sample case above...'
+        ></textarea>
+        <div class="input-footer">
+          <span class="char-count" id="char-count">0 characters</span>
+          <button class="btn btn-primary" id="btn-submit">
+            <span class="btn-text">Analyze Ticket</span>
+            <span class="btn-loader" style="display:none"></span>
+          </button>
+        </div>
+      </section>
+
+      <!-- Output Panel -->
+      <section class="panel output-panel">
+        <div class="panel-header">
+          <h2>📋 Analysis Result</h2>
+          <button class="btn btn-secondary" id="btn-copy" style="display:none">Copy JSON</button>
+        </div>
+
+        <!-- Status Cards -->
+        <div class="status-cards" id="status-cards" style="display:none">
+          <div class="status-card" id="card-verdict">
+            <span class="card-label">Evidence Verdict</span>
+            <span class="card-value" id="val-verdict">—</span>
+          </div>
+          <div class="status-card" id="card-case">
+            <span class="card-label">Case Type</span>
+            <span class="card-value" id="val-case">—</span>
+          </div>
+          <div class="status-card" id="card-severity">
+            <span class="card-label">Severity</span>
+            <span class="card-value" id="val-severity">—</span>
+          </div>
+          <div class="status-card" id="card-department">
+            <span class="card-label">Department</span>
+            <span class="card-value" id="val-department">—</span>
+          </div>
+        </div>
+
+        <!-- Response JSON -->
+        <div class="response-area" id="response-area">
+          <div class="placeholder-message" id="placeholder-msg">
+            <div class="placeholder-icon">🔍</div>
+            <p>Submit a ticket to see the analysis result here.</p>
+          </div>
+          <pre id="response-output" style="display:none"></pre>
+        </div>
+
+        <!-- Error Display -->
+        <div class="error-banner" id="error-banner" style="display:none">
+          <span>⚠️</span>
+          <span id="error-message"></span>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <p>QueueStorm Investigator · SUST CSE Carnival 2026 · Powered by Gemini AI</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
