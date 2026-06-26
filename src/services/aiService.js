@@ -212,6 +212,7 @@ async function analyzeWithLLM(ticket, ruleResult) {
   rawText = rawText.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
 
   const parsed = JSON.parse(rawText);
+  console.log("Raw LLM response:", JSON.stringify(parsed, null, 2));
 
   // ─── Merge: rules win only where they are confident ──────────────────────
   const validIds = new Set(
@@ -235,7 +236,14 @@ async function analyzeWithLLM(ticket, ruleResult) {
   // case_type / severity
   if (ruleResult.classificationConfident) {
     parsed.case_type = ruleResult.possibleCaseType;
-    if (ruleResult.possibleSeverity) parsed.severity = ruleResult.possibleSeverity;
+    if (parsed.case_type === "phishing_or_social_engineering") {
+      parsed.severity = "critical";
+    } else {
+      // Let LLM choose the severity for non-phishing cases, using the rule engine's suggestion only as fallback.
+      if (!parsed.severity && ruleResult.possibleSeverity) {
+        parsed.severity = ruleResult.possibleSeverity;
+      }
+    }
   }
 
   // department is always derived deterministically from the final case_type.

@@ -148,7 +148,11 @@ function analyzeWithRules(ticket) {
       complaintLower.includes("asked") ||
       complaintLower.includes("share") ||
       complaintLower.includes("block") ||
-      complaintLower.includes("blocked"));
+      complaintLower.includes("blocked")) &&
+    !(complaintLower.includes("ignore") && 
+      (complaintLower.includes("rule") || 
+       complaintLower.includes("instruction") || 
+       complaintLower.includes("system")));
 
   if (isPhishing) {
     result.possibleCaseType = "phishing_or_social_engineering";

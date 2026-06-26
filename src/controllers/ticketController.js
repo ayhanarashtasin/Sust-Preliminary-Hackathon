@@ -31,8 +31,8 @@ function buildFallbackResponse(ticketId, ruleResult) {
       "We have received your concern. Our support team will review the details and contact you through official channels. Please do not share your PIN, OTP, or password with anyone.",
     human_review_required: ruleResult?.humanReviewRequired !== undefined ? ruleResult.humanReviewRequired : true,
     confidence: 0.3,
-    reason_codes: ruleResult?.ruleReasonCodes 
-      ? Array.from(new Set([...ruleResult.ruleReasonCodes, "fallback_response"])) 
+    reason_codes: ruleResult?.ruleReasonCodes
+      ? Array.from(new Set([...ruleResult.ruleReasonCodes, "fallback_response"]))
       : ["fallback_response", "manual_review_required"],
   };
 }
