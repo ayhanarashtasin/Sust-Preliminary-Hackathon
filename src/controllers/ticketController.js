@@ -31,7 +31,7 @@ function buildFallbackResponse(ticketId, ruleResult) {
     human_review_required: ruleResult?.humanReviewRequired !== undefined ? ruleResult.humanReviewRequired : true,
     confidence: 0.3,
     reason_codes: ruleResult?.ruleReasonCodes 
-      ? [...ruleResult.ruleReasonCodes, "fallback_response"] 
+      ? Array.from(new Set([...ruleResult.ruleReasonCodes, "fallback_response"])) 
       : ["fallback_response", "manual_review_required"],
   };
 }

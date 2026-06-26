@@ -5,18 +5,18 @@
  * then asks Gemini to generate the human-readable text fields.
  * The output is validated by Zod and sanitized by the safety checker.
  */
-const { GoogleGenAI } = require("@google/genai");
+const Groq = require("groq-sdk");
 const { responseSchema } = require("../schemas/validation");
 const { sanitizeResponse } = require("./safetyChecker");
 
-// ─── Initialize Gemini client ─────────────────────────────────────────────────
-let genai = null;
+// ─── Initialize Groq client ─────────────────────────────────────────────────
+let groq = null;
 
 function getClient() {
-  if (!genai) {
-    genai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  if (!groq) {
+    groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
   }
-  return genai;
+  return groq;
 }
 
 // ─── System prompt ────────────────────────────────────────────────────────────
@@ -108,30 +108,30 @@ function buildUserPrompt(ticket, ruleResult) {
   return parts.join("\n\n");
 }
 
-// ─── Call Gemini with retry and model fallback ────────────────────────────────
-const MODELS_TO_TRY = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash"];
+// ─── Call Groq with retry and model fallback ────────────────────────────────
+const MODELS_TO_TRY = ["llama-3.3-70b-versatile", "llama3-70b-8192", "mixtral-8x7b-32768", "llama3-8b-8192"];
 
-async function callGeminiWithRetry(client, userPrompt, maxRetries = 2) {
+async function callGroqWithRetry(client, userPrompt, maxRetries = 2) {
   let lastError = null;
 
   for (const model of MODELS_TO_TRY) {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const response = await client.models.generateContent({
+        const response = await client.chat.completions.create({
           model,
-          contents: userPrompt,
-          config: {
-            systemInstruction: SYSTEM_PROMPT,
-            responseMimeType: "application/json",
-            temperature: 0.2,
-          },
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userPrompt }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.2,
         });
         return response;
       } catch (err) {
         lastError = err;
-        const isRateLimit = err?.status === 429 || err?.message?.includes("429") || err?.message?.includes("RESOURCE_EXHAUSTED");
+        const isRateLimit = err?.status === 429 || err?.message?.includes("429") || err?.message?.includes("rate limit");
         if (isRateLimit && attempt < maxRetries) {
-          const delay = (attempt + 1) * 2000; // 2s, 4s backoff
+          const delay = (attempt + 1) * 2000;
           console.log(`Rate limited on ${model}, retrying in ${delay}ms (attempt ${attempt + 1})...`);
           await new Promise((r) => setTimeout(r, delay));
           continue;
@@ -143,19 +143,19 @@ async function callGeminiWithRetry(client, userPrompt, maxRetries = 2) {
     }
   }
 
-  throw lastError || new Error("All Gemini models failed");
+  throw lastError || new Error("All Groq models failed");
 }
 
 async function analyzeWithGemini(ticket, ruleResult) {
   const client = getClient();
   const userPrompt = buildUserPrompt(ticket, ruleResult);
 
-  const response = await callGeminiWithRetry(client, userPrompt);
+  const response = await callGroqWithRetry(client, userPrompt);
 
   // Extract JSON from response
-  let rawText = response.text;
+  let rawText = response.choices[0]?.message?.content;
   if (!rawText) {
-    throw new Error("Gemini returned empty response");
+    throw new Error("Groq returned empty response");
   }
 
   // Clean up response (remove markdown fences if present)
