@@ -35,6 +35,11 @@ const UNAUTHORIZED_ACTION_PATTERNS = [
   /\brefund\s+has\s+been\s+(processed|completed|issued|initiated)\b/i,
   /\byou\s+will\s+get\s+your\s+money\s+back\b/i,
   /\byour\s+refund\s+is\s+(confirmed|approved)\b/i,
+  /\byou\s+will\s+be\s+refunded\b/i,
+  /\bwe('re|\s+are)\s+processing\s+your\s+refund\b/i,
+  /\byour\s+money\s+is\s+on\s+(the|its)\s+way\b/i,
+  /\bwe\s+will\s+credit\s+your\s+(account|balance)\b/i,
+  /\byour\s+(account|balance)\s+will\s+be\s+(credited|restored)\b/i,
   // Bangla patterns
   /আপনার\s+টাকা\s+ফেরত\s+দেওয়া\s+হয়েছে/i,
   /রিফান্ড\s+করা\s+হয়েছে/i,
@@ -124,8 +129,11 @@ function sanitizeResponse(response) {
   const hasUnauthorizedAction = safetyResult.violations.some(
     (v) => v.type === "unauthorized_action"
   );
+  const hasThirdPartyRedirect = safetyResult.violations.some(
+    (v) => v.type === "third_party_redirect"
+  );
 
-  if (hasCredentialViolation || hasUnauthorizedAction) {
+  if (hasCredentialViolation || hasUnauthorizedAction || hasThirdPartyRedirect) {
     // Detect language for safe replacement
     const isBangla =
       /[\u0980-\u09FF]/.test(response.customer_reply);

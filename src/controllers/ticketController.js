@@ -4,14 +4,15 @@
  * Flow:
  * 1. Validate request with Zod
  * 2. Run rule-based evidence matcher
- * 3. Call Gemini for text generation
- * 4. Zod validates Gemini output
- * 5. Safety checker sanitizes output
- * 6. Return response (or deterministic fallback on failure)
+ * 3. Call LLM (Groq) for AI analysis
+ * 4. Merge: rules win where confident, LLM wins elsewhere
+ * 5. Zod validates merged output
+ * 6. Safety checker sanitizes output
+ * 7. Return response (or deterministic fallback on failure)
  */
 const { requestSchema } = require("../schemas/validation");
 const { analyzeWithRules } = require("../services/ruleEngine");
-const { analyzeWithGemini } = require("../services/aiService");
+const { analyzeWithLLM } = require("../services/aiService");
 
 // ─── Deterministic fallback response ──────────────────────────────────────────
 function buildFallbackResponse(ticketId, ruleResult) {
@@ -73,12 +74,12 @@ async function analyzeTicket(req, res) {
     // ─── Step 2: Run rule-based evidence matcher ──────────────────────────────
     const ruleResult = analyzeWithRules(ticket);
 
-    // ─── Step 3: Call Gemini (with fallback) ──────────────────────────────────
+    // ─── Step 3: Call LLM (with deterministic fallback) ───────────────────────
     let response;
     try {
-      response = await analyzeWithGemini(ticket, ruleResult);
+      response = await analyzeWithLLM(ticket, ruleResult);
     } catch (aiError) {
-      console.error("Gemini analysis failed, using fallback:", aiError.message);
+      console.error("LLM analysis failed, using fallback:", aiError.message);
       response = buildFallbackResponse(ticket.ticket_id, ruleResult);
     }
 

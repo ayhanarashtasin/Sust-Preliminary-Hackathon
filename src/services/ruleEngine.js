@@ -101,7 +101,10 @@ function extractAmounts(text) {
   const banglaConverted = (text.match(/[০-৯]+/g) || []).map((s) =>
     s.replace(/[০-৯]/g, (d) => banglaDigitMap[d])
   );
-  return [...englishAmounts, ...banglaConverted].map(Number).filter((n) => n > 0);
+  // Strip thousands separators so "5,000" parses to 5000 instead of NaN.
+  return [...englishAmounts, ...banglaConverted]
+    .map((s) => Number(String(s).replace(/,/g, "")))
+    .filter((n) => Number.isFinite(n) && n > 0);
 }
 
 // ─── Helper: check if text contains any keyword ───────────────────────────────
@@ -126,6 +129,13 @@ function analyzeWithRules(ticket) {
     humanReviewRequired: false,
     ruleReasonCodes: [],
     ambiguousMatch: false,
+    // ─── Confidence flags ────────────────────────────────────────────────────
+    // When a flag is true, the rule engine is asserting a DETERMINISTIC fact and
+    // the AI layer must not override it. When false, the rule engine is only
+    // guessing and the AI's (schema-validated) decision is preferred instead.
+    matchConfident: false,        // we are sure which txn (or that it's null) the complaint refers to
+    classificationConfident: false, // a keyword branch positively identified the case_type
+    verdictConfident: false,      // the evidence_verdict is deterministically known
   };
 
   // ─── 1. Phishing detection (highest priority) ──────────────────────────────
@@ -146,12 +156,13 @@ function analyzeWithRules(ticket) {
     result.possibleSeverity = "critical";
     result.humanReviewRequired = true;
     result.evidenceVerdict = "insufficient_data";
+    result.matchedTransactionId = null; // phishing is about the contact, not a txn
     result.ruleReasonCodes.push("phishing", "credential_protection", "critical_escalation");
 
-    // No transaction needed for phishing
-    if (transaction_history.length === 0) {
-      result.matchedTransactionId = null;
-    }
+    // Phishing is safety-critical and deterministic — lock everything.
+    result.matchConfident = true;
+    result.classificationConfident = true;
+    result.verdictConfident = true;
     return result;
   }
 
@@ -164,6 +175,7 @@ function analyzeWithRules(ticket) {
     if (matchingTxns.length === 1) {
       result.matchedTransaction = matchingTxns[0];
       result.matchedTransactionId = matchingTxns[0].transaction_id;
+      result.matchConfident = true; // exact, unique amount match
       result.ruleReasonCodes.push("transaction_match");
     } else if (matchingTxns.length > 1) {
       // Check for duplicate payment pattern (same amount, same counterparty, very close timestamps)
@@ -175,12 +187,16 @@ function analyzeWithRules(ticket) {
         );
         result.matchedTransaction = sorted[sorted.length - 1]; // Last one = duplicate
         result.matchedTransactionId = sorted[sorted.length - 1].transaction_id;
+        result.matchConfident = true; // duplicate pattern resolved deterministically
         result.ruleReasonCodes.push("duplicate_payment", "transaction_match");
       } else {
-        // Multiple matches, ambiguous
+        // Multiple equally-plausible matches → genuinely ambiguous. We are
+        // CONFIDENT that the right answer is "cannot tell" → null + insufficient.
         result.ambiguousMatch = true;
         result.matchedTransactionId = null;
         result.evidenceVerdict = "insufficient_data";
+        result.matchConfident = true;
+        result.verdictConfident = true;
         result.ruleReasonCodes.push("ambiguous_match", "needs_clarification");
       }
     }
@@ -194,6 +210,7 @@ function analyzeWithRules(ticket) {
       if (failedTxn) {
         result.matchedTransaction = failedTxn;
         result.matchedTransactionId = failedTxn.transaction_id;
+        result.matchConfident = true;
         result.ruleReasonCodes.push("transaction_match");
       }
     }
@@ -202,6 +219,7 @@ function analyzeWithRules(ticket) {
       if (cashInTxn) {
         result.matchedTransaction = cashInTxn;
         result.matchedTransactionId = cashInTxn.transaction_id;
+        result.matchConfident = true;
         result.ruleReasonCodes.push("transaction_match");
       }
     }
@@ -210,13 +228,15 @@ function analyzeWithRules(ticket) {
       if (settlementTxn) {
         result.matchedTransaction = settlementTxn;
         result.matchedTransactionId = settlementTxn.transaction_id;
+        result.matchConfident = true;
         result.ruleReasonCodes.push("transaction_match");
       }
     }
-    // Fallback: if only one transaction, use it
+    // Fallback: if only one transaction, it is almost certainly the referent.
     if (!result.matchedTransaction && transaction_history.length === 1) {
       result.matchedTransaction = transaction_history[0];
       result.matchedTransactionId = transaction_history[0].transaction_id;
+      result.matchConfident = true;
       result.ruleReasonCodes.push("single_transaction_match");
     }
   }
@@ -227,77 +247,98 @@ function analyzeWithRules(ticket) {
     result.possibleDepartment = "payments_ops";
     result.possibleSeverity = "high";
     result.humanReviewRequired = true;
+    result.classificationConfident = true;
     result.ruleReasonCodes.push("duplicate_payment");
   } else if (containsAny(complaint, WRONG_TRANSFER_KEYWORDS)) {
     result.possibleCaseType = "wrong_transfer";
     result.possibleDepartment = "dispute_resolution";
     result.possibleSeverity = "high";
     result.humanReviewRequired = true;
+    result.classificationConfident = true;
     result.ruleReasonCodes.push("wrong_transfer");
   } else if (containsAny(complaint, FAILED_PAYMENT_KEYWORDS) && result.matchedTransaction?.status === "failed") {
     result.possibleCaseType = "payment_failed";
     result.possibleDepartment = "payments_ops";
     result.possibleSeverity = "high";
+    result.classificationConfident = true;
     result.ruleReasonCodes.push("payment_failed");
   } else if (containsAny(complaint, AGENT_CASH_IN_KEYWORDS)) {
     result.possibleCaseType = "agent_cash_in_issue";
     result.possibleDepartment = "agent_operations";
     result.possibleSeverity = "high";
     result.humanReviewRequired = true;
+    result.classificationConfident = true;
     result.ruleReasonCodes.push("agent_cash_in");
-  } else if (containsAny(complaint, MERCHANT_SETTLEMENT_KEYWORDS) && (user_type === "merchant" || complaintLower.includes("merchant"))) {
+  } else if (containsAny(complaint, MERCHANT_SETTLEMENT_KEYWORDS) && user_type === "merchant") {
     result.possibleCaseType = "merchant_settlement_delay";
     result.possibleDepartment = "merchant_operations";
     result.possibleSeverity = "medium";
+    result.classificationConfident = true;
     result.ruleReasonCodes.push("merchant_settlement");
   } else if (containsAny(complaint, REFUND_KEYWORDS)) {
     result.possibleCaseType = "refund_request";
     result.possibleDepartment = "customer_support";
     result.possibleSeverity = "low";
+    result.classificationConfident = true;
     result.ruleReasonCodes.push("refund_request");
   }
 
   // ─── 4. Evidence verdict ────────────────────────────────────────────────────
   if (!result.evidenceVerdict) {
-    if (result.ambiguousMatch) {
-      result.evidenceVerdict = "insufficient_data";
-    } else if (!result.matchedTransaction) {
+    if (!result.matchedTransaction) {
       if (transaction_history.length === 0) {
+        // No history at all → genuinely impossible to verify. Deterministic.
         result.evidenceVerdict = "insufficient_data";
+        result.verdictConfident = true;
       } else {
-        // Have transactions but none match — could be vague complaint
+        // History exists but our rules found no match. We are NOT confident —
+        // the AI may spot a semantic match (by counterparty, type, context),
+        // so defer the verdict (and the relevant_transaction_id) to it.
         result.evidenceVerdict = "insufficient_data";
         result.matchedTransactionId = null;
+        result.verdictConfident = false;
       }
     } else {
-      // We have a matched transaction — check for inconsistency
-      result.evidenceVerdict = "consistent"; // Default, Gemini will refine
+      // We matched a transaction. "consistent" is the baseline, but the AI may
+      // detect a contradiction (e.g. reversed/failed status vs the claim), so
+      // do not lock the verdict here.
+      result.evidenceVerdict = "consistent";
+      result.verdictConfident = false;
     }
   }
 
-  // ─── 5. Check for inconsistency patterns ────────────────────────────────────
+  // ─── 5. Check for inconsistency patterns (deterministic) ────────────────────
   if (
     result.possibleCaseType === "wrong_transfer" &&
     result.matchedTransaction
   ) {
-    // If recipient appears multiple times, it is an established pattern
+    // If recipient appears multiple times, it is an established pattern: a
+    // "wrong transfer" to a repeat recipient contradicts the complaint.
     const recipientCount = transaction_history.filter(
       (t) => t.counterparty === result.matchedTransaction.counterparty
     ).length;
     if (recipientCount > 1) {
       result.evidenceVerdict = "inconsistent";
+      result.verdictConfident = true; // deterministic contradiction
       result.ruleReasonCodes.push("established_recipient_pattern", "evidence_inconsistent");
       result.humanReviewRequired = true;
     }
   }
 
-  // ─── 6. Handle vague complaints ─────────────────────────────────────────────
+  // ─── 6. Handle complaints the keyword rules could not classify ──────────────
   if (!result.possibleCaseType) {
+    // Provide a safe default, but mark classification as NOT confident so the
+    // AI's (enum-validated) case_type is preferred over this fallback.
     result.possibleCaseType = "other";
     result.possibleDepartment = "customer_support";
     result.possibleSeverity = "low";
-    result.evidenceVerdict = "insufficient_data";
-    result.matchedTransactionId = null;
+    result.classificationConfident = false;
+    if (!result.matchConfident) {
+      // No reliable transaction either → truly insufficient.
+      result.evidenceVerdict = "insufficient_data";
+      result.matchedTransactionId = null;
+      result.verdictConfident = true;
+    }
     result.ruleReasonCodes.push("vague_complaint", "needs_clarification");
   }
 
